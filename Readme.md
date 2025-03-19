@@ -183,7 +183,73 @@ CMD ["java", "-jar", "app.jar"]
 
 ---
 
-## 이미지 크기 비교표
+## Troubleshooting
+
+### 1. Dockerfile이 없는 경우
+오류 메시지: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
+
+원인: Dockerfile이 현재 디렉토리에 존재하지 않음. 예를 들어, 파일 이름이 DockerfileVanila인 경우, Dockerfile을 기본 이름으로 변경하거나, docker build 명령어에 -f 옵션을 사용하여 파일을 지정해야 합니다.
+
+해결 방법:
+
+Dockerfile을 기본 이름으로 변경하거나, 명령어에 -f 옵션을 사용합니다.
+
+bash
+docker build -t vanila -f DockerfileVanila .
+
+참고
+Dockerfile 명명 규칙
+- 기본 명명 규칙: Dockerfile의 Default Name은 **Dockerfile**, Default 사용 시 docker build 명령어를 간단하게 실행 가능
+- 사용자 정의 명명 규칙: 여러 Dockerfile을 사용하는 경우, <purpose>.Dockerfile 형식으로 명명
+
+### 2. Alpine 이미지에서 apt-get 사용 시 오류
+오류 메시지: /bin/sh: apt-get: not found
+
+원인: Alpine Linux는 apt-get 대신 apk를 사용
+
+해결 방법:
+
+Dockerfile에서 apt-get 명령어를 apk로 변경
+
+text
+### 실행 스테이지
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY step01_basic-0.0.1-SNAPSHOT.jar app.jar
+RUN apk update && \
+    apk upgrade && \
+    rm -rf /var/cache/apk/* && \
+    rm -rf /tmp/*
+    
+# 3. Spring Boot 애플리케이션 실행 시 ClassNotFoundException
+오류 메시지: Could not find or load main class org.springframework.boot.loader.JarLauncher
+
+원인: Spring Boot 애플리케이션을 실행할 때 JarLauncher 클래스 확인 불가
+
+해결 방법:
+
+- 멀티 스테이지 빌드를 사용하여 Spring Boot 애플리케이션 수정
+- ENTRYPOINT 명령어를 사용하여 JarLauncher를 실행할 수 있도록 설정
+
+text
+### 빌드 스테이지
+FROM eclipse-temurin:17-jdk-alpine AS builder
+WORKDIR /build
+COPY step01_basic-0.0.1-SNAPSHOT.jar app.jar
+RUN java -Djarmode=layertools -jar app.jar extract
+
+### 실행 스테이지
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY --from=builder /build/dependencies/ ./
+COPY --from=builder /build/spring-boot-loader/ ./
+COPY --from=builder /build/snapshot-dependencies/ ./
+COPY --from=builder /build/application/ ./
+ENTRYPOINT ["java", "org.springframework.boot.loader.JarLauncher"]
+
+## 결론 및 참고 자료
+
+**이미지 크기 비교표**
 
 | 버전       | 베이스 이미지                 | 크기     |
 |------------|-------------------------------|----------|
@@ -193,13 +259,10 @@ CMD ["java", "-jar", "app.jar"]
 | Layer Cache | eclipse-temurin:17-jre-alpine | 206MB    |
 | Multi-stage | JDK + JRE (Alpine)            | 205MB    |
 
+- Alpine 이미지는 Vanilla보다 경량화되었으며, Distroless는 보안성과 최소한의 구성으로 유리
+- 멀티 스테이지 빌드를 통해 최적화된 이미지를 생성 가능
+
 ---
-
-## 결론 및 참고 자료
-
-- Alpine 이미지는 Vanilla보다 경량화되었으며, Distroless는 보안성과 최소한의 구성으로 유리합니다.
-- 멀티 스테이지 빌드를 통해 최적화된 이미지를 생성할 수 있습니다.
-- Dockerhub에서 최적화된 이미지를 공유하여 재사용 가능합니다.
 
 **Dockerhub Repository:** [jamie929/myoptimg](https://hub.docker.com/repository/docker/jamie929/myoptimg/tags)  
 **참고 링크:** [Docker 공식 문서](https://docs.docker.com/)
